@@ -1,3 +1,42 @@
+# v0.91.12 (2026-08-25)
+
+- **Multi-arch release CI hardening** — Added `docker/setup-qemu-action@v3` prior to `docker/setup-buildx-action@v3` in the release workflow to resolve ARM64 binfmt registration and prevent QEMU instruction stalls during multi-platform container builds.
+
+# v0.91.11 (2026-08-25)
+
+- **Grok 4.6 full capability & effort scaling** — Added first-class support for `grok-4.6` with regex effort matching (`/^grok-4\.[56](?:$|-)/`), 500k context window registration in provider capabilities, and virtual reasoning effort aliases (`xhigh`, `high`, `medium`, `low`).
+- **Grok CLI subscription tier fallback order** — Prioritized authoritative subscription tier data returned by the `/v1/user` billing endpoint, with fallback to JWT token claims.
+- **SSE streaming & buffer bypass** — Bypassed 8KB buffer peeking during active stream mode to achieve 0ms time-to-first-token (TTFT) and deterministic Claude billing cache headers.
+- **Provider connection probe hardening** — Hardened the Blackbox connection test probe to evaluate `res.ok || res.status === 400` against canonical registry models, eliminating false-positive active status flags on region blocks.
+- **Thinking format compatibility** — Registered `thinkingFormat: "openai"` for Bazaarlink and A6API providers to guarantee correct reasoning block delivery.
+- **Frontend performance & accessibility** — Removed redundant external Google Font CDN stylesheet link to eliminate 1.2s+ render-blocking FCP delay, memoized O(N²) provider stats calculations during interval polling, optimized image loading with deferred preloading, fixed landing page contrast ratios, and removed dead SSR machine ID extraction.
+- **OAuth & Upstream sync** — Added CodeBuddy-Intl OAuth support, Cursor machine ID deduplication precedence, and Codestral transport quirks.
+
+# v0.91.10 (2026-08-19)
+
+- **OpenAI Responses system prompt injection** — Injected Token Saver prompts (Caveman/Ponytail) into `body.instructions` instead of `input[]` for OpenAI Responses / Codex models, preventing `Unknown parameter: 'input[0].content'` (#106 / #2497).
+- **Web fetch format routing** — Forwarded `format` parameter (`markdown`, `text`, `html`) to upstream web fetch providers (Jina Reader via `X-Respond-With`, Firecrawl via `formats`, Tavily via `format`).
+- **Chat content part type standardization** — Standardized array content parts in Chat completions to `{ type: "text" }` instead of `input_text` for strict upstream providers (#3204).
+
+# v0.91.9 (2026-08-19)
+
+- **Local font bundling** — Bundled Material Symbols locally to eliminate external Google Fonts CDN dependency and removed the fragile `visibility: hidden` font-loading gate.
+- **Sidebar changelog modal** — Replaced the external GitHub changelog link in the sidebar with an interactive modal popup matching the navbar experience.
+- **Multi-language changelog action** — Added translations for 'Check new changelog' across all 30 supported language literal files.
+
+# v0.91.8 (2026-08-18)
+
+- **Empty reasoning stream recovery** — Emitted a synthetic text delta before stream completion across Gemini and Claude translators when models finish with only thinking content, preventing `APIEmptyResponseError` in AI SDK clients.
+- **Search error isolation** — Prevented client input validation errors (HTTP 400 / 422) from triggering account lockouts or provider failovers.
+- **Exa Search Playground** — Added interactive 1:1 request playground with coding presets, live cURL preview, and dual-mode JSON/SSE decoder.
+- **Material Symbols i18n Guard** — Excluded icon font ligature containers from runtime text translation to prevent corrupted UI controls (#105).
+- **Multi-channel Donate** — Configured built-in support for Saweria, Trakteer, and Ko-fi, and updated label to 'Donate Me' with full multi-language translations.
+
+# v0.91.7 (2026-08-18)
+
+- **Exa Search 1:1 Integration** — Full parameter mapping (`type`, `stream`, `numResults`, `category`, `userLocation`, `includeDomains`, `excludeDomains`, dates, `moderation`, `additionalQueries`, `systemPrompt`, `outputSchema`, `compliance`, nested `contents` with text/highlights/summary/livecrawl/subpages/extras), SSE stream response handling, and response metadata preservation.
+- **Atomic Bulk Add Provider Connections** — Added `POST /api/providers/bulk` running in a single database transaction with per-batch validation and collision-safe account naming without billable probes on import.
+
 # v0.91.6 (2026-08-17)
 
 - **Kiro region routing** — Hardened commercial-region validation across executor, model catalog, OAuth, refresh, external IdP, and provider-test paths; rejected unsupported AWS partitions and duplicate regional fallbacks.

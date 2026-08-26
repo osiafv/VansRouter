@@ -33,28 +33,28 @@ git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-### Example: Release `v0.91.6`
+### Example: Release `v0.91.10`
 
 Use the exact release version everywhere. Do not combine the changelog commit with code, workflow, or package-version changes.
 
 ```bash
 # Commit 1: code, CI, tests, and package version bump
 git add package.json cli/package.json .github/workflows/release.yml cli/scripts AGENTS.md .agent/cicd.md
-git commit -m "chore: prepare release 0.91.6"
+git commit -m "chore: prepare release 0.91.10"
 
 # Commit 2: changelog only; must remain the final commit before the tag
 git add CHANGELOG.md
 git diff --cached --name-only
 # Expected output: CHANGELOG.md
-git commit -m "docs(changelog): release v0.91.6"
+git commit -m "docs(changelog): release v0.91.10"
 
 git push origin main
-node cli/scripts/validate-release.cjs v0.91.6 --pretag
-git tag -a v0.91.6 -m "Release v0.91.6"
-git push origin v0.91.6
+node cli/scripts/validate-release.cjs v0.91.10 --pretag
+git tag -a v0.91.10 -m "Release v0.91.10"
+git push origin v0.91.10
 ```
 
-Before using another version, replace every `0.91.6` occurrence above with the new `X.Y.Z`. Confirm both package files and the top changelog heading use the same version.
+Before using another version, replace every `0.91.10` occurrence above with the new `X.Y.Z`. Confirm both package files and the top changelog heading use the same version.
 
 ## Pre-Tag Validation
 
@@ -71,6 +71,11 @@ node cli/scripts/validate-release.cjs "v$(node -p "require('./package.json').ver
 ```
 
 The `--pretag` command checks the changelog-only commit before the tag exists. After creating the annotated tag, CI repeats the same checks and additionally verifies tag object type. If a check fails, stop. Do not push a tag.
+
+## Docker Multi-Arch Build Contract
+
+- `docker/setup-qemu-action@v3` is **MANDATORY** and must run immediately before `docker/setup-buildx-action@v3` in the `build-and-verify-ghcr` job.
+- Reason: The GitHub Actions `ubuntu-latest` runner is x86_64 (`amd64`). Multi-platform builds (`linux/amd64,linux/arm64`) require QEMU binfmt registration to compile C++ native modules (e.g. `better-sqlite3`) and run Next.js compilation for ARM64. Omission causes instruction stalls/illegal instruction core dumps and 60m+ timeouts.
 
 ## CI Gates
 
@@ -113,7 +118,7 @@ curl -fsS http://127.0.0.1:3003/api/health
 
 - `check-branch` or package failure: fix the branch and create a new version/tag.
 - Once a tag is pushed, it is immutable even if CI fails. Never delete, move, force-push, or rerun under the same tag after a release-gate bug; fix the workflow and use the next version.
-- `v0.91.3` and `v0.91.4` are historical failed tags. Do not reuse them; `v0.91.5` was the first recovery release with the temporary-tag validation fix. `v0.91.6` carries the subsequent Kiro hardening and the provider-dashboard revert.
+- `v0.91.3` and `v0.91.4` are historical failed tags (release-validation ref bug). `v0.91.11` failed due to missing QEMU in multi-arch GHCR build. Do not reuse them; `v0.91.12` resolved multi-arch with `setup-qemu-action@v3`.
 - GHCR staging failure: do not promote its staging tag.
 - npm publish timeout: query npm first; never retry blindly:
 

@@ -71,7 +71,7 @@ export async function handleSearch(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: provider (or model)");
   }
 
-  if (!isKindAllowed(apiKeyInfo, "web")) {
+  if (!isKindAllowed(apiKeyInfo, "webSearch")) {
     log.warn("AUTH", "Web search kind not allowed for API key");
     return errorResponse(HTTP_STATUS.FORBIDDEN, "Web search requests are not allowed for this API key");
   }
@@ -157,7 +157,8 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     offset: body.offset,
     domain_filter: body.domain_filter,
     content_options: body.content_options,
-    provider_options: body.provider_options
+    provider_options: body.provider_options,
+    exa_options: body.exa_options || body.exa || body
   };
 
   // No-auth providers (e.g. searxng) bypass credential lookup
@@ -221,6 +222,11 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     });
 
     if (result.success) return result.response;
+
+    // Do NOT lock the account or trigger account fallback on 400/422 (client request validation errors)
+    if (result.status === 400 || result.status === 422) {
+      return result.response;
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId);
 
