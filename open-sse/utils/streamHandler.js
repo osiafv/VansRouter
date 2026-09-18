@@ -37,7 +37,8 @@ export function createStreamController({ onDisconnect, onError, log, provider, m
       if (disconnected) return;
       disconnected = true;
 
-      logStream(`disconnect: ${reason}`);
+      // Debug-only: Responses API has no [DONE] sentinel, so codex/droid close the
+      // socket on every completed request. "📊 done" is the authoritative outcome line.
       dbg("CTRL", `${provider}/${model} | disconnect=${reason} | dur=${Date.now() - startTime}ms`);
 
       abortController.abort();
@@ -95,9 +96,33 @@ export function createDisconnectAwareStream(transformStream, streamController, o
     } catch { /* best-effort terminal */ }
   };
 
+  // Keep-alive heartbeat: emit SSE comment every 15s when upstream is slow (e.g. high-reasoning prefill)
+  // to prevent Cloudflare edge 100s timeout (HTTP 524 / 520).
+  const HEARTBEAT_INTERVAL_MS = 15_000;
+  const heartbeatBytes = new TextEncoder().encode(": keep-alive\n\n");
+  let lastHeartbeat = Date.now();
+  let heartbeatTimer = null;
+
   return new ReadableStream({
+    start(controller) {
+      heartbeatTimer = setInterval(() => {
+        if (!streamController.isConnected()) {
+          clearInterval(heartbeatTimer);
+          return;
+        }
+        if (Date.now() - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+          try {
+            controller.enqueue(heartbeatBytes);
+            lastHeartbeat = Date.now();
+          } catch {
+            clearInterval(heartbeatTimer);
+          }
+        }
+      }, HEARTBEAT_INTERVAL_MS);
+    },
     async pull(controller) {
       if (!streamController.isConnected()) {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
         emitTerminal(controller);
         controller.close();
         return;
@@ -107,12 +132,15 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         const { done, value } = await reader.read();
 
         if (done) {
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
           streamController.handleComplete();
           controller.close();
           return;
         }
+        lastHeartbeat = Date.now();
         controller.enqueue(value);
       } catch (error) {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
         const wasConnected = streamController.isConnected();
         // Controller already closed = downstream ended; not an upstream error, skip noisy log.
         const msg0 = error?.message || "";
@@ -150,6 +178,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
     },
 
     cancel(reason) {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       streamController.handleDisconnect(reason || "cancelled");
       reader.cancel();
       writer.abort();

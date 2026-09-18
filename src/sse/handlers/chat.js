@@ -11,6 +11,7 @@ import {
   isKindAllowed,
   isTrustedInternalRequest,
 } from "../services/auth.js";
+import { handleAntigravityQuotaError } from "../services/antigravityQuota.js";
 import {
   isKimchiQuotaExhausted,
   buildKimchiQuotaExhaustedUpdate,
@@ -326,7 +327,20 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // instead of immediately returning 503. Bounded to 1 retry per request.
   let cooldownRetries = 0;
 
+  // Bounded fallback attempts: prevent 100+ account cascade from exceeding Cloudflare 100s edge timeout.
+  // ponytail: max 6 fallback attempts per request; return 429/503 early if accounts exhausted.
+  const MAX_FALLBACK_ATTEMPTS = Math.max(providerAccountCount > 0 ? Math.min(providerAccountCount, 6) : 6, 1);
+  let fallbackAttempts = 0;
+
   while (true) {
+    if (fallbackAttempts >= MAX_FALLBACK_ATTEMPTS) {
+      log.warn("CHAT", `[${provider}/${model}] fallback attempt limit reached (${MAX_FALLBACK_ATTEMPTS}) — aborting to prevent gateway timeout`);
+      return withSelectedConnectionHeader(
+        errorResponse(lastStatus || HTTP_STATUS.RATE_LIMITED, lastError || `Rate limit reached across ${MAX_FALLBACK_ATTEMPTS} accounts`),
+        lastExcludedConnectionId
+      );
+    }
+    fallbackAttempts++;
     // Abort check: stop trying accounts if the client already disconnected.
     // Prevents wasted upstream calls and circuit-breaker probe hits on a dead
     // connection.
@@ -454,6 +468,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       headroomEnabled: !!chatSettings.headroomEnabled,
       headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
       headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
+      headroomTimeoutMs: chatSettings.headroomTimeoutMs,
       cavemanEnabled: !!chatSettings.cavemanEnabled,
       cavemanLevel: chatSettings.cavemanLevel || "full",
       ponytailEnabled: !!chatSettings.ponytailEnabled,
@@ -544,8 +559,22 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       // Fall through to fallback behavior — the next account will be tried.
     }
 
-    // Mark account unavailable (auto-calculates cooldown with classify429 for 429s, exponential backoff, or precise resetsAtMs)
-    const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, errorText, provider, model, result.resetsAtMs);
+    // Antigravity 409/429: refresh live quota to get exact resetAt before locking
+    let quotaResetMs = null;
+    let resetsAtMs = result.resetsAtMs;
+    if (provider === "antigravity" && (result.status === 409 || result.status === 429)) {
+      quotaResetMs = await handleAntigravityQuotaError(
+        credentials.connectionId, result.status, model,
+        refreshedCredentials.accessToken, credentials.providerSpecificData
+      );
+      if (quotaResetMs) resetsAtMs = quotaResetMs;
+    }
+
+    // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
+    // Do not persist a modelLock_* for this path.
+    const { shouldFallback } = (provider === "antigravity" && quotaResetMs)
+      ? { shouldFallback: true }
+      : await markAccountUnavailable(credentials.connectionId, result.status, errorText, provider, model, resetsAtMs);
 
     // Record provider-level failure for circuit breaker — skip if it's a known
     // Kimchi quota-exhaustion (not a provider-wide outage). Proxy-aware: failure

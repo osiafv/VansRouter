@@ -7,6 +7,8 @@ Mandatory for every AI-assisted release. Do not bypass these rules with force ta
 - Release source: annotated Git tag `vX.Y.Z` pushed to the current tip of `main`.
 - `package.json` and `cli/package.json` versions must equal `X.Y.Z`.
 - `CHANGELOG.md` must start with `# vX.Y.Z (YYYY-MM-DD)`.
+- The top release entry must be detailed enough to mirror the shipped scope: group changes under meaningful headings such as Features, Reliability & Compatibility, Frontend & Accessibility, Release Infrastructure, and Tests; name affected providers/modules; document user-visible behavior and compatibility changes; include verified test/build evidence. Do not use a vague one-line summary for a multi-feature release.
+- Changelog claims must be evidence-based: derive entries from `git log <previous-tag>..HEAD`, final diff, and completed validation output. Mark skipped or unavailable integration coverage explicitly; never claim provider behavior was live-verified without a real provider test.
 - The commit immediately before the tag must be the last commit changing only `CHANGELOG.md`.
 - All code, workflow, test, and version changes must be complete before the changelog-only commit.
 - Never retag or move an existing release tag. Use the next version.
@@ -63,7 +65,7 @@ Run from a clean `main` checkout:
 ```bash
 git pull --ff-only origin main
 git status --short
-git diff --check
+git -c core.whitespace=cr-at-eol diff --check
 node -e 'const a=require("./package.json"),b=require("./cli/package.json"); if(a.version!==b.version) throw Error(`${a.version} !== ${b.version}`); console.log(a.version)'
 pnpm test
 pnpm run build
@@ -78,6 +80,8 @@ The `--pretag` command checks the changelog-only commit before the tag exists. A
 - Reason: The GitHub Actions `ubuntu-latest` runner is x86_64 (`amd64`). Multi-platform builds (`linux/amd64,linux/arm64`) require QEMU binfmt registration to compile C++ native modules (e.g. `better-sqlite3`) and run Next.js compilation for ARM64. Omission causes instruction stalls/illegal instruction core dumps and 60m+ timeouts.
 
 ## CI Gates
+
+For `origin/main` branch protection, the required status check is exactly `Validate (Ubuntu / Node 22)` from `.github/workflows/ci.yml`. The cross-platform matrix is conditional and must not be a required check because GitHub may legitimately skip it on non-platform changes. Branch protection also requires the branch to be up to date, blocks force-push/deletion, enforces admin rules, and requires conversation resolution.
 
 The release workflow must complete in this order:
 

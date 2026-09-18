@@ -10,11 +10,12 @@
 !.yarn/releases
 !.yarn/versions
 package-lock.json
+!cli/package-lock.json
 
 # =============================================================================
 # Build output
 # =============================================================================
-/.next/
+#/.next/
 /.next-cli-build/
 /out/
 /build
@@ -91,6 +92,7 @@ test/*
 open-sse/test/*
 open-sse.old/
 ecosystem.config.*
+!ecosystem.config.cjs
 deploy*.sh
 scripts/agSniffer/*
 gitbooks/*
