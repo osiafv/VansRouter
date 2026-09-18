@@ -1,12 +1,12 @@
 import crypto from "crypto";
 import { BaseExecutor } from "./base.js";
 import { PROVIDERS } from "../config/providers.js";
-import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS } from "../config/appConstants.js";
+import { OAUTH_ENDPOINTS, ANTIGRAVITY_HEADERS, ANTIGRAVITY_PROMPT_REWRITES } from "../config/appConstants.js";
 import { HTTP_STATUS } from "../config/runtimeConfig.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { scrubProxyAndFingerprintHeaders } from "../services/antigravityHeaderScrub.js";
-import { cleanJSONSchemaForAntigravity } from "../translator/formats/gemini.js";
+import { cleanJSONSchemaForAntigravity, normalizeGeminiContents } from "../translator/formats/gemini.js";
 import { DEFAULT_THINKING_AG_SIGNATURE } from "../config/defaultThinkingSignature.js";
 import { resolveAntigravityUpstreamModel } from "../config/providerModels.js";
 
@@ -206,7 +206,7 @@ export class AntigravityExecutor extends BaseExecutor {
 
     // ─── Standard (non-image) request ───
     // Fix contents for Claude models via Antigravity
-    const contents = body.request?.contents?.map(c => {
+    const rawContents = (body.request?.contents || []).map(c => {
       let role = c.role;
       // functionResponse must be role "user" for Claude models
       if (c.parts?.some(p => p.functionResponse)) {
@@ -234,6 +234,7 @@ export class AntigravityExecutor extends BaseExecutor {
       }
       return c;
     }).filter(c => Array.isArray(c.parts) && c.parts.length > 0); // ponytail: v1internal rejects empty parts[] (issue #6)
+    const contents = normalizeGeminiContents(rawContents);
 
     // Sanitize tool schemas and function names before sending to Antigravity.
     let tools = body.request?.tools;
@@ -278,14 +279,21 @@ export class AntigravityExecutor extends BaseExecutor {
       }
     }
     stripBlacklisted(requestWithoutTools);
+
+    // Rewrite competing-client branding in system prompts (e.g. Zed's Claude prompt,
+    // OpenCode naming) so Antigravity doesn't flag the request with a 429 Quota Exhausted.
     if (Array.isArray(requestWithoutTools.systemInstruction?.parts)) {
       requestWithoutTools.systemInstruction = {
         ...requestWithoutTools.systemInstruction,
-        parts: requestWithoutTools.systemInstruction.parts.map((part) => (
-          typeof part?.text === "string"
-            ? { ...part, text: AG_PROMPT_TRIGGERS.reduce((text, trigger) => text.split(trigger).join(""), part.text) }
-            : part
-        )),
+        parts: requestWithoutTools.systemInstruction.parts.map((part) => {
+          if (typeof part?.text !== "string") return part;
+          let text = part.text;
+          for (const { from, to } of ANTIGRAVITY_PROMPT_REWRITES) {
+            text = text.replaceAll(from, to);
+          }
+          text = AG_PROMPT_TRIGGERS.reduce((t, trigger) => t.split(trigger).join(""), text);
+          return { ...part, text };
+        }),
       };
     }
     // Model-aware thinkingConfig strip — keep for Gemini, drop for Claude/gpt-oss/tab_.

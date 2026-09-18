@@ -1,3 +1,120 @@
+# v0.91.22 (2026-09-14)
+
+## Features
+
+- **Video generation providers** — Added OpenRouter and Vertex AI (Veo) generation adapters, asynchronous polling, image-to-video inputs, Vertex service-account authentication, and model/job path validation.
+- **Codex image models** — Added GPT Image 2.5, Flare, and Sunburst model coverage with the corresponding routing and capability metadata.
+- **OpenCode Go model and CLI coverage** — Added newly published OpenCode Go models, runtime transport support, stable relay sessions, and provider-grouped CLI model selection with search.
+- **Provider catalog parity** — Added CodeBuddy International model parity, DeepSeek 4.1 Flash routing, and restored provider compatibility for media and custom-provider connections.
+
+## Reliability & Compatibility
+
+- **OpenCode Go transport** — Preserved upstream affinity headers, message-format authentication, Responses routing, client session continuity, and usage accounting.
+- **Database initialization** — Retries failed adapter initialization safely, closes failed adapters, and preserves SQLite WAL shutdown behavior across native and fallback drivers.
+- **Streaming and translation** — Hardened Antigravity/Gemini content normalization, Claude/OpenAI tool and content handling, early end-of-stream recovery, and request logging redaction.
+- **Provider and API safety** — Restored media ACL enforcement, routed compatible bulk imports through provider nodes, bounded video operation identifiers, and kept custom-provider, ZCode, branding, and persistent DB-path behavior intact.
+- **Authentication refresh** — Hardened Clinepass OAuth refresh and provider/account health recovery paths.
+- **Upstream compatibility merge** — Integrated the latest `origin/main` fixes for custom-provider bulk hydration and Antigravity Claude image/document input while preserving VansRouter routing, persistence, and deployment behavior.
+- **Bulk provider hydration** — Resolves each compatible provider node once per batch, preventing duplicate lookup logic and keeping OpenAI-compatible, Anthropic-compatible, and embedding imports consistent.
+
+## Release Infrastructure
+
+- **Atomic standalone deployment** — Added isolated build/staging validation, temporary health/version smoke checks, atomic release-link activation, retained releases for rollback, and recovery when PM2 switching fails. PM2 reloads the persistent `server.js` launcher with `RELEASE_SERVER` pointing at the durable current-release link; ephemeral `/tmp` release paths are rejected, and deployment no longer deletes the live PM2 process or saves a missing process list. This removes the documented live-asset copy step that caused `Loading chunk failed` during upgrades.
+- **Cross-platform build output** — Standalone symlink repair now follows `NEXT_DIST_DIR`, so custom build directories are handled without hardcoded `.next` assumptions.
+- **Upgrade storage contract** — Docker documentation and compose examples consistently preserve the `9router-data` volume; installs created with historical `vansrouter-data` are copied automatically into the canonical volume without overwriting existing files; npm/CLI packaging retains the existing `DATA_DIR` and legacy JSON migration path.
+- **CI cost control** — Routine branch and pull-request validation runs one cached Ubuntu/Node 22 core gate; the six-job Windows/macOS/Linux × Node 22/24 matrix runs only for CLI, runtime, build, data-path, Docker, and workflow changes or manual dispatch. Release-tag validation remains full and multi-platform. The public `main` branch now requires the core check, up-to-date branches, admin enforcement, and conversation resolution while allowing the conditional matrix to skip safely.
+- **Clean-checkout portability** — Preserved LF shebangs for Node entrypoints and the Devin ACP fixture so GitHub Actions and Unix users do not receive an invalid `node\\r` interpreter after checkout. CLI SQLite runtime tests now validate both a built bundled WASM asset and the clean-source fallback ordering.
+- **Semaphore wake reliability** — Kept the required account-block expiry timer referenced so queued requests wake reliably under Node 22 instead of timing out when the event loop has no other referenced work.
+- **Cline non-stream compatibility** — Opted Cline and ClinePass into provider-scoped `{success,data}` envelope unwrapping before usage extraction, model-test validation, translation, and client response serialization. Flat responses and other providers remain unchanged; upstream error envelopes become proper gateway errors, including surfacing errors in direct model test pings.
+- **Release hygiene** — Bounded atomic deployment release directory growth with automatic pruning of older staging directories, keeping only active and rollback targets. Cleaned unused imports across base executors, auth services, and model registries.
+- **Fast Docker multi-arch build** — Runs Next.js build natively on host CPU (`--platform=$BUILDPLATFORM`) and isolates native C++ compilation of `better-sqlite3` to the target platform without installing 500+ unrelated packages under QEMU, dropping multi-arch build duration from 60+ minutes (QEMU timeout) to ~4-5 minutes. Decoupled npm publishing from Docker build so npm packages publish immediately.
+- **Database corruption recovery** — Pre-flight `PRAGMA quick_check;` on startup detects truncated/malformed databases (Issue #118), automatically quarantines damaged files, and restores from the newest intact backup without silent data loss. Configurable `SQLITE_SYNCHRONOUS` enables full `fsync` commits when needed.
+- **Video job affinity** — Requires active `x-connection-id` binding for video polling, preventing completed jobs from being sent to a different account after rotation or account disablement.
+- **Vertex request validation** — Rejects unsafe project, location, model, and operation path segments, and rejects ambiguous image strings instead of treating arbitrary input as a GCS object.
+- **SQLite build backups** — Uses the native SQLite online backup API so committed WAL pages are included before production builds; retains only the newest pre-build backup.
+- **Packaging side-effect control** — Release packaging installs CLI dependencies with lifecycle scripts disabled, preventing runtime downloads during artifact validation.
+
+## Tests & Verification
+
+- Full Vitest suite: **272 files passed, 13 skipped; 3145 tests passed, 82 skipped**.
+- Release-hardening focused suite: **5 files passed; 54 tests passed**, covering Cline envelope handling, video adapters, account-bound polling, video model filtering, and database migrations.
+- Deployment/database regression tests: **3 files passed; 19 tests passed**; the broader provider/deployment focused run passed **8 files and 79 tests**, covering atomic release validation, rollback selection, persistent DB paths, ACL/provider behavior, and custom provider routing.
+- Production build (`pnpm run build`) completed successfully with TypeScript verification, 139 generated pages, native `better-sqlite3`, WAL-safe pre-build backup, and `no-undef` lint clean; the backup completes synchronously before `next build` starts.
+- Docker validation passed locally: `docker build --check .` and full `docker build -t vansrouter:release-readiness-check .`; the image build verified native `better-sqlite3`. Application-level migration tests preserved legacy settings and database state; Docker-volume migration remains CI/integration coverage, not a live production claim.
+- ESLint completed with exit code 0; the repository reports 231 warnings and 0 errors.
+- CLI tarball validation and clean temporary extraction smoke test passed, including bundled server startup, SQLite creation, and legacy `db.json` migration.
+- `git -c core.whitespace=cr-at-eol diff --check` and release pre-tag validation passed locally; CRLF line endings are handled explicitly by the repository release gate. Live provider tests remain credential-gated and were not claimed as verified.
+
+# v0.91.21 (2026-09-03)
+
+## Features
+
+- **Gemini 3.8 Flash Tiered Support & Parity** — Registered `gemini-3.8-flash` in Gemini registry and tiered variants (`gemini-3.8-flash-high`, `gemini-3.8-flash-medium`, `gemini-3.8-flash-low`) in Antigravity provider registry, CLI menus, and MITM tooling with exact 1M context / 64k output capabilities, pricing ($0.75/$3.75), and quota tracking gauges.
+- **Media & Web Search Model Availability** — Resolved virtual and static model IDs for all webSearch (`ag/search`, `kimi/search`, `xai/search`, `gemini/search`, `glm/search`, `ollama-search/search`, `xquik/search`), webFetch (`/fetch`), and media providers across `/v1/models/web`, `/v1/models/info`, and ACL validation layers so media dashboard test cards execute without missing-model errors.
+- **Atomic Bulk Custom Model Imports** — Added `addCustomModelsBulk` using atomic SQLite transactions for multi-model imports with deduplication and normalized bulk responses in `/api/models/custom`.
+- **Antigravity Search Grounding Multi-Host Fallback** — Routed search grounding to `daily-cloudcode-pa` with automatic fallback to `cloudcode-pa` for resilience.
+
+## Reliability & Security
+
+- **Kiro Social OAuth Namespace & Poll Hardening** — Restricted `targetProvider` in social exchange to the `kiro` provider namespace to prevent connection hijacking, added exponential backoff / retry bounding on device polling network errors, and improved identity match safety.
+- **Model Resolution Optimization** — Deduplicated media model resolution across connected, free, and fallback provider paths in `allowedModels.js`.
+- **Responses Terminal Event Finalization** — Ensured usage statistics and request logs finalize cleanly when clients close on `response.completed` without trailing sentinels.
+
+## Tests & Verification
+
+- Full test suite verified: **265 test files passed, 13 skipped; 3069 tests passed, 82 skipped** (100% green).
+- Production build (`npm run build`) completed cleanly with TypeScript verification.
+- Code quality audits: `lint:undef` and `lint:reacthooks` clean.
+
+# v0.91.20 (2026-08-31)
+
+## Features
+
+- **Model catalog refresh** — Added background synchronization from models.dev, expanded provider capability metadata, and registered new GLM, DeepSeek, Grok, Gemini, and Zed model coverage without blocking normal startup.
+- **Antigravity web search** — Added Antigravity as a search provider, including provider routing, quota handling, image-size-to-aspect-ratio mapping, and Gemini 3.7 Flash tier support.
+- **Xquik search** — Added Xquik search integration with validated provider options, SSRF-safe base URL handling, credential fallback for supported providers, and normalized unified search responses.
+- **Zed provider** — Added Zed authentication, model routing, usage/quota tracking, and provider registry integration.
+- **Grok CLI bulk import** — Added dashboard and OAuth support for importing multiple Grok CLI accounts.
+- **Shared CLI endpoint presets** — Consolidated endpoint presets across CLI tool cards, including Codex, OpenCode, Kilo, Cline, Copilot, Claude, Droid, Hermes, Jcode, and OpenClaw.
+- **Codex Spark quota tracking** — Added GPT-5.3-Codex-Spark quota-window tracking and reset-credit support.
+
+## Reliability & Compatibility
+
+- **CommandCode streaming** — Added in-stream error translation, response termination handling, and protocol helper extraction while preserving combo and account-fallback behavior.
+- **Responses streaming** — Preserved usage when clients disconnect after terminal events, removed false disconnect logging, and restored passthrough `DONE` termination.
+- **Ollama streaming** — Parses final unterminated NDJSON chunks instead of dropping the stream tail.
+- **Claude compatibility** — Decloaks tool names for same-format streaming, defaults missing Claude tool types, and preserves provider-specific tool contracts.
+- **MiniMax and OpenAI bridges** — Preserves images on matched transports and supports provider-specific reasoning formats.
+- **Search failure isolation** — Prevents search-only provider failures from taking chat providers offline.
+- **Database runtime** — Supports better-sqlite3 N-API prebuilds on Node 22+ and spreads query parameters correctly in the SQLite adapter.
+- **Headroom and RTK** — Adds configurable compression timeout, format-safe/idempotent system prompt injection, and diagnostics before silent translation failures.
+- **OAuth resilience** — Updates Cline refresh handling, CodeBuddy Intl OAuth wiring, provider probe timeouts, and undefined-provider guards.
+
+## CodeBuddy
+
+- **CodeBuddy Intl** — Added OAuth/device-code login, provider registration, model catalog parity, stream-only executor handling, and usage reporting.
+- **Request preservation** — Keeps client `system` and `developer` instructions, preserves assistant/tool and multimodal content, converts only string user content to typed blocks, and avoids duplicate required system prompts.
+- **Quota parsing** — Shares CN/Intl parsing, supports ISO and numeric timestamps, distinguishes malformed payloads from empty quotas, and separates recurring allowance from one-shot bonus packages.
+- **Contract tests** — Added executor, quota, capability, and regression coverage for CN/Intl behavior.
+
+## Frontend & Accessibility
+
+- **Provider dashboard** — Added bulk Grok CLI import UI, refreshed provider/model screens, and improved quota presentation.
+- **Token saver** — Updated cards and system-injection flows for current request formats.
+- **UI robustness** — Improved responsive provider tables, endpoint controls, and model/tool configuration surfaces.
+
+## Release Infrastructure
+
+- **Multi-architecture Docker** — Added mandatory `docker/setup-qemu-action@v3` immediately before `docker/setup-buildx-action@v3`, preventing ARM64 native-module build failures and QEMU instruction stalls.
+- **Container naming** — Standardized published GHCR image references to lowercase `ghcr.io/vanszs/vansrouter`.
+- **Release validation** — Kept version, changelog, annotated-tag, npm artifact, SQLite smoke-test, and multi-architecture image gates explicit in CI/CD policy.
+
+## Tests
+
+- Full suite verified: **260 test files passed, 13 skipped; 3039 tests passed, 82 skipped**.
+- Production build and TypeScript compilation passed.
+- `lint:undef`, `lint:reacthooks`, and `git diff --check` passed.
+
 # v0.91.12 (2026-08-25)
 
 - **Multi-arch release CI hardening** — Added `docker/setup-qemu-action@v3` prior to `docker/setup-buildx-action@v3` in the release workflow to resolve ARM64 binfmt registration and prevent QEMU instruction stalls during multi-platform container builds.
